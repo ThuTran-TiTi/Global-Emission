@@ -1,0 +1,167 @@
+---
+title: "Final Project -STAT451"
+author: "Thu Tran"
+date: "2022-11-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(maps)
+library(mapproj)
+library(viridis)
+library(plotly)
+```
+
+
+## Load the data type
+```{r}
+emissions<-read.csv("emissions.csv")
+glimpse (emissions)
+```
+
+```{r}
+View(emissions)
+```
+
+## a.Understanding biggest co2 emitters across the globe 
+
+### a.1/	Types of emissions through 1970 to 2012:
+```{r}
+# Create a table to calculate emissions by years
+tb_emission<-emissions %>% 
+  group_by(Year) %>% 
+  summarise(
+    avg_CO2=mean(Emissions.Type.CO2,na.rm=TRUE),
+    avg_N2O=mean(Emissions.Type.N2O,na.rm=TRUE),
+    avg_CH4=mean(Emissions.Type.CH4,na.rm=TRUE),
+  ) 
+# Plot the line chart
+ggplot(tb_emission)+
+  geom_line(aes(x=Year, y= avg_CH4,color ="green"))+ 
+  geom_line(aes(x=Year, y= avg_CO2,color ="red"))+
+  geom_line(aes(x=Year, y= avg_N2O,color = "blue"))+
+  labs( title = " GREENHOUSE GAS EMISSIONS FROM 1970 TO 2012",
+        x ="Year",
+        y ="The amount of emission in kilotons" )+
+  
+  scale_color_discrete(name= "Greenhouse gases", labels =c("CO2","CH4","N2O" ))
+
+```
+```{r}
+# for a clearly view of CO2 and N2O emission
+ ggplot(tb_emission)+
+  geom_line(aes(x=Year, y= avg_CO2,color ="red"))+
+  geom_line(aes(x=Year, y= avg_N2O,color = "blue"))+
+  labs( title = " Greenhouse emissions from 1970 to 2012",
+        x ="Year",
+        y ="The amount of emission in kilotons ")+
+  scale_color_discrete(name= "Greenhouse gases",labels=c("CO2","N20"))
+```
+
+### a.2/Average greenhouse emissions around the world: 
+```{r}
+#Load the world map
+world_m<-map_data("world")
+#Fix the world data name
+world_m$region<-gsub("South Sudan","Sudan", world_m$region,fixed=TRUE)
+world_m$region<-gsub("Sudan","Sudan and South Sudan", world_m$region,fixed=TRUE)
+emissions$Country<-gsub("United States","USA", emissions$Country,fixed=TRUE)
+```
+
+```{r}
+# Create a table to calculate the average emissions by Countries
+Gas<-emissions %>% 
+  group_by(Country) %>% 
+  summarise(
+    CO2_emission = round (mean(Emissions.Type.CO2,na.rm=TRUE),2),
+    N2O_emission = round (mean(Emissions.Type.N2O,na.rm=TRUE),2),
+    CH4_emission = round (mean(Emissions.Type.CH4,na.rm=TRUE),2),
+    GH_emission  = round (mean(CO2_emission,N2O_emission,CH4_emission),2)
+  ) %>% 
+  left_join(world_m, by= c("Country"="region")) 
+
+# Plot a map
+ggplot(Gas,aes(x=long, y = lat, group=group))+
+    geom_polygon(aes(fill=GH_emission), color= "black")+
+    ggtitle("AVERAGE GREENHOUSE GAS EMISSIONS")+
+    labs(x="",y="")+
+    scale_fill_viridis(option="magma", name= "Average GH gas")
+
+```
+
+
+### a.3/ Analyze the top 5 countries that have the highest emissions:
+```{r}
+# Create a table for the top 5 emitters
+Top5 <-emissions %>% 
+  filter(Country=="USA"|Country=="China"|Country=="India"|Country=="Russia"|Country=="Brazil") %>%
+  group_by(Year, Country) %>% 
+  summarise(
+    GH_emission  = round (mean(Emissions.Type.CO2,Emissions.Type.CH4,Emissions.Type.N2O),2)
+  )
+
+# Make animated plot by ggplotly
+ggplotly(
+ggplot(Top5)+
+  geom_point(aes(Year,GH_emission,color=Country,frame=Year))+
+  facet_wrap(~Country)
+)
+  
+
+```
+
+## b. Does GPD relate to higher co2 emissions? 
+
+```{r}
+#Calculate the ratio of $1000 GDP per each person
+emissions<-mutate(emissions, GDP.Per.Capita=Ratio.Per.Capita/Ratio.Per.GDP)
+#Create a data frame calculate the mean ratio CO2 per capita, and the mean $1000 GDP per capita
+GDP_vs_CO2<-emissions %>% 
+  group_by(Year) %>% 
+  summarise(
+    avg_Ratio.p.capita=mean(Ratio.Per.Capita,na.rm=TRUE),
+    avg_GDP.p.capita=mean(GDP.Per.Capita,na.rm=TRUE)
+  ) 
+# Plot with area chart
+ggplot(GDP_vs_CO2)+
+  geom_area(aes(x=Year,y=avg_Ratio.p.capita), fill = "red")+
+  geom_area(aes(x=Year, y=avg_GDP.p.capita), fill = "blue")+
+  labs(x="Year",y="Ratio per capita", title = "GDP vs GREENHOUSE")+
+  geom_vline(xintercept = 1990)
+  
+```
+
+c. Is emissions changing over the years? 
+
+```{r}
+# Calculate average emission sector by years
+tb_sectors<-emissions %>% 
+  group_by(Year) %>% 
+  summarise(
+    `Power industry` = mean (Emissions.Sector.Power.Industry,na.rm=TRUE),
+    `Buildings`= mean (Emissions.Sector.Buildings,na.rm=TRUE),
+    `Transport` = mean (Emissions.Sector.Transport,na.rm=TRUE),
+    `Other industry` = mean (Emissions.Sector.Other.Industry,na.rm=TRUE),
+    `Other sectors` = mean (Emissions.Sector.Other.sectors,na.rm=TRUE),
+  )
+head(tb_sectors)
+
+# rearrange table
+Sector<-tb_sectors %>% pivot_longer(names(tb_sectors)[-1],names_to = "sectors",values_to = "amount")
+
+# Plot a stacked bar
+ggplot(Sector)+
+  geom_col(aes(x= Year,y=amount, fill=fct_reorder(sectors,amount)),position="fill")+
+  guides(fill=guide_legend(title="Sectors"))+
+  labs(x= "Year",y= "Proportions", title = "EMISSIONS BY SECTORS FROM 1970 TO 2012")+
+  scale_fill_manual(values= c("#B9CCE8","#78A3E2","#4382DF","#0461EA","#083C8A"))
+
+
+```
+
+
+
+
+
